@@ -11,14 +11,14 @@ base_url = "https://cookpad.com/jp/search/卵"
 
 # 判別条件（表記ゆれ対応）
 keyword_lists = {
-    "卵": ["卵", "たまご", "玉子","マヨネーズ","かまぼこ","はんぺん"],
-    "小麦": ["トースト","小麦", "小麦粉", "パン", "うどん", "パスタ", "麩", "そうめん","薄力粉","強力粉","中力粉","餃子の皮","グルテン"],
-    "乳": ["牛乳", "チーズ", "バター", "ヨーグルト", "クリーム","発酵乳","練乳","れん乳","粉ミルク","アイスクリーム"]
+    "卵": ["卵", "たまご", "玉子", "マヨネーズ", "かまぼこ", "はんぺん"],
+    "小麦": ["トースト", "小麦", "小麦粉", "パン", "うどん", "パスタ", "麩", "そうめん", "薄力粉", "強力粉", "中力粉", "餃子の皮", "グルテン"],
+    "乳": ["牛乳", "チーズ", "バター", "ヨーグルト", "クリーム", "発酵乳", "練乳", "れん乳", "粉ミルク", "アイスクリーム"]
 }
 
-# 保存先フォルダ
-image_folder = "egg"
-os.makedirs(image_folder, exist_ok=True)
+# 保存先フォルダのベース
+base_folder = "recipes_by_ingredient"
+os.makedirs(base_folder, exist_ok=True)
 
 # レシピ情報を格納するリスト
 recipes = []
@@ -67,33 +67,45 @@ for page in range(1, max_pages + 1):
 
             contains_keywords = {key: contains_keyword(keyword_lists[key], ingredients_list) for key in keyword_lists}
 
-            # 条件に一致する場合のみ処理
-            if  contains_keywords["卵"] and not contains_keywords["小麦"] and not contains_keywords["乳"]:
-                # レシピ名を含む画像の取得
-                img_tag = recipe_soup.find("img", alt=lambda value: value and recipe_name in value)
-                img_path = None
-                if img_tag:  # レシピ名が alt の一部を含むかチェック
-                    img_url = img_tag["src"]
+            # 保存フォルダを決定
+            save_folders = []
+            for key, is_present in contains_keywords.items():
+                if is_present:
+                    folder_name = key.lower()  # フォルダ名を小文字に変換
+                    save_folders.append(folder_name)
 
-                    # スキームがない場合は補完
-                    if img_url.startswith("//"):
-                        img_url = urljoin("https://", img_url)
-                    elif img_url.startswith("/"):
-                        img_url = urljoin(base_url, img_url)
+            # 該当なしの場合は "none" フォルダ
+            if not save_folders:
+                save_folders.append("none")
 
-                    img_name = os.path.basename(img_url.split("?")[0])
-                    img_path = os.path.join(image_folder, img_name)
+            # レシピ名を含む画像の取得
+            img_tag = recipe_soup.find("img", alt=lambda value: value and recipe_name in value)
+            if img_tag:  # レシピ名が alt の一部を含むかチェック
+                img_url = img_tag["src"]
 
-                    # 画像をダウンロード
+                # スキームがない場合は補完
+                if img_url.startswith("//"):
+                    img_url = urljoin("https://", img_url)
+                elif img_url.startswith("/"):
+                    img_url = urljoin(base_url, img_url)
+
+                img_name = os.path.basename(img_url.split("?")[0])
+
+                for folder in save_folders:
+                    # 保存先フォルダを作成
+                    folder_path = os.path.join(base_folder, folder)
+                    os.makedirs(folder_path, exist_ok=True)
+
+                    img_path = os.path.join(folder_path, img_name)
+
+                    # 画像をダウンロードして保存
                     try:
                         img_data = requests.get(img_url).content
                         with open(img_path, "wb") as img_file:
                             img_file.write(img_data)
-                        print(f"Downloaded image: {img_name}")
+                        print(f"Downloaded image to {folder}: {img_name}")
                     except Exception as e:
                         raise RuntimeError(f"Failed to download image: {img_url}") from e
-                else:
-                    raise ValueError(f"No matching image found for recipe: {recipe_name}")
 
                 # レシピ情報を格納
                 recipes.append({
@@ -101,7 +113,7 @@ for page in range(1, max_pages + 1):
                     "URL": link,
                     "Ingredients": ingredients_list,
                     "Contains Keywords": contains_keywords,
-                    "Image Path": img_path if img_path else "No Image"
+                    "Saved Folders": save_folders
                 })
 
                 print(f"Processed recipe: {recipe_name}")
@@ -109,7 +121,7 @@ for page in range(1, max_pages + 1):
             print(f"Error processing recipe: {e}")
 
         # レシピ間でランダムに待機
-        time.sleep(1)
+        time.sleep(random.uniform(2, 5))
 
 # JSONに保存
 json_filename = "recipes_with_images.json"
